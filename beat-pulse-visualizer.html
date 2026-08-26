@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beat Pulse Visualizer</title>
+<style>
+  :root {
+    --bg: #050a10;
+    --surface: #0a141c;
+    --ink: #e0f0f8;
+    --muted: #6b8a9a;
+    --accent: #00d4a0;
+    --line: rgba(255, 255, 255, 0.06);
+    --radius: 14px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+  }
+
+  h1 {
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+    text-align: center;
+    background: linear-gradient(135deg, #00d4ff 0%, #00ff88 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    width: 100%;
+    max-width: 720px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  .panel h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .upload-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .file-group {
+    flex: 1 1 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .file-group label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  input[type="file"] {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--ink);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  input[type="file"]:hover {
+    border-color: var(--accent);
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 14px;
+    margin-top: 10px;
+  }
+
+  .control {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .control label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .control input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .control .value {
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-align: right;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+
+  button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+  }
+
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #0088ff, #00ff88);
+    color: #000;
+  }
+
+  .btn-secondary {
+    background: rgba(255,255,255,0.08);
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+
+  .btn-danger {
+    background: linear-gradient(135deg, #ff4d4d, #cc0000);
+    color: #fff;
+  }
+
+  #canvasContainer {
+    position: relative;
+    width: 100%;
+    max-width: 960px;
+    aspect-ratio: 16/9;
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #status {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-align: center;
+    min-height: 1.4em;
+  }
+
+  #status.recording {
+    color: #ff4d4d;
+    font-weight: 600;
+    animation: blink 1s infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .hidden { display: none !important; }
+
+  .preview-thumb {
+    width: 42px;
+    height: 42px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid var(--line);
+    margin-top: 4px;
+  }
+
+  @media (max-width: 520px) {
+    .upload-row { flex-direction: column; }
+    .panel { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Beat Pulse Visualizer</h1>
+<p class="subtitle">Upload your .wav, your logo, and a background image. Watch the circle pulse to your beats.</p>
+
+<div class="panel">
+  <h2>Uploads</h2>
+  <div class="upload-row">
+    <div class="file-group">
+      <label for="audioInput">Audio (.wav / .mp3)</label>
+      <input type="file" id="audioInput" accept="audio/*">
+    </div>
+    <div class="file-group">
+      <label for="logoInput">Logo (PNG/JPG)</label>
+      <input type="file" id="logoInput" accept="image/*">
+      <img id="logoPreview" class="preview-thumb hidden" alt="Logo preview">
+    </div>
+    <div class="file-group">
+      <label for="bgInput">Background Image</label>
+      <input type="file" id="bgInput" accept="image/*">
+      <img id="bgPreview" class="preview-thumb hidden" alt="Background preview">
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Look & Feel</h2>
+  <div class="controls">
+    <div class="control">
+      <label>Wave Intensity <span class="value" id="val-intensity">1.0</span></label>
+      <input type="range" id="intensity" min="0.2" max="3" step="0.1" value="1">
+    </div>
+    <div class="control">
+      <label>Wave Count <span class="value" id="val-waves">6</span></label>
+      <input type="range" id="waveCount" min="2" max="10" step="1" value="6">
+    </div>
+    <div class="control">
+      <label>Pan Speed <span class="value" id="val-pan">0.3</span></label>
+      <input type="range" id="panSpeed" min="0" max="1.5" step="0.1" value="0.3">
+    </div>
+    <div class="control">
+      <label>Tilt Amount <span class="value" id="val-tilt">8</span></label>
+      <input type="range" id="tilt" min="0" max="25" step="1" value="8">
+    </div>
+    <div class="control">
+      <label>Logo Size <span class="value" id="val-logo">120</span></label>
+      <input type="range" id="logoSize" min="60" max="220" step="5" value="120">
+    </div>
+    <div class="control">
+      <label>Bass Sensitivity <span class="value" id="val-bass">1.2</span></label>
+      <input type="range" id="bassSens" min="0.2" max="3" step="0.1" value="1.2">
+    </div>
+    <div class="control">
+      <label>Mid Sensitivity <span class="value" id="val-mid">0.9</span></label>
+      <input type="range" id="midSens" min="0.2" max="3" step="0.1" value="0.9">
+    </div>
+    <div class="control">
+      <label>High Sensitivity <span class="value" id="val-high">0.7</span></label>
+      <input type="range" id="highSens" min="0.2" max="3" step="0.1" value="0.7">
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn-primary" id="playBtn" disabled>Play</button>
+    <button class="btn-secondary" id="pauseBtn" disabled>Pause</button>
+    <button class="btn-secondary" id="resetBtn">Reset Position</button>
+    <button class="btn-danger" id="recordBtn" disabled>Record Video</button>
+  </div>
+</div>
+
+<div id="canvasContainer">
+  <canvas id="visualizer"></canvas>
+</div>
+<p id="status"></p>
+
+<script>
+/* === Elements === */
+const audioInput   = document.getElementById('audioInput');
+const logoInput    = document.getElementById('logoInput');
+const bgInput      = document.getElementById('bgInput');
+const logoPreview  = document.getElementById('logoPreview');
+const bgPreview    = document.getElementById('bgPreview');
+const playBtn      = document.getElementById('playBtn');
+const pauseBtn     = document.getElementById('pauseBtn');
+const resetBtn     = document.getElementById('resetBtn');
+const recordBtn    = document.getElementById('recordBtn');
+const statusEl     = document.getElementById('status');
+const canvas       = document.getElementById('visualizer');
+const ctx          = canvas.getContext('2d');
+
+/* === State === */
+let audioCtx, analyser, source, gainNode, audioBuffer, audioEl;
+let dataArray, freqArray;
+let isPlaying = false;
+let isRecording = false;
+let mediaRecorder;
+let recordedChunks = [];
+let startTime = 0;
+let panOffset = 0;
+let logoImg = null;
+let bgImg = null;
+let animationId;
+
+/* === Settings === */
+const settings = {
+  intensity: 1,
+  waveCount: 6,
+  panSpeed: 0.3,
+  tilt: 8,
+  logoSize: 120,
+  bassSens: 1.2,
+  midSens: 0.9,
+  highSens: 0.7,
+};
+
+function bindSlider(id, key) {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById('val-' + key.replace(/[A-Z]/g, m => '-' + m.toLowerCase()));
+  el.addEventListener('input', () => {
+    settings[key] = parseFloat(el.value);
+    if (valEl) valEl.textContent = el.value;
+  });
+}
+
+bindSlider('intensity', 'intensity');
+bindSlider('waveCount', 'waveCount');
+bindSlider('panSpeed', 'panSpeed');
+bindSlider('tilt', 'tilt');
+bindSlider('logoSize', 'logoSize');
+bindSlider('bassSens', 'bassSens');
+bindSlider('midSens', 'midSens');
+bindSlider('highSens', 'highSens');
+
+/* === Canvas sizing === */
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* === Image loading === */
+function loadImage(file) {
+  return new Promise((resolve) => {
+    if (!file) return resolve(null);
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+logoInput.addEventListener('change', async () => {
+  const file = logoInput.files[0];
+  logoImg = await loadImage(file);
+  if (logoImg) {
+    logoPreview.src = logoImg.src;
+    logoPreview.classList.remove('hidden');
+  }
+});
+
+bgInput.addEventListener('change', async () => {
+  const file = bgInput.files[0];
+  bgImg = await loadImage(file);
+  if (bgImg) {
+    bgPreview.src = bgImg.src;
+    bgPreview.classList.remove('hidden');
+  }
+});
+
+/* === Audio loading === */
+audioInput.addEventListener('change', async () => {
+  const file = audioInput.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  const arrayBuffer = await file.arrayBuffer();
+  audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+  if (!audioEl) {
+    audioEl = document.createElement('audio');
+    audioEl.crossOrigin = 'anonymous';
+    audioEl.src = url;
+    audioEl.loop = true;
+  } else {
+    audioEl.src = url;
+    audioEl.load();
+  }
+
+  if (!analyser) {
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.65;
+    const bufferLength = analyser.frequencyBinCount;
+    dataArray = new Uint8Array(bufferLength);
+    freqArray = new Uint8Array(bufferLength);
+  }
+
+  playBtn.disabled = false;
+  pauseBtn.disabled = false;
+  recordBtn.disabled = false;
+  statusEl.textContent = 'Audio loaded: ' + file.name;
+});
+
+/* === Playback control === */
+function ensureSource() {
+  if (source) { try { source.stop(); } catch(e){} source.disconnect(); source = null; }
+  source = audioCtx.createMediaElementSource(audioEl);
+  gainNode = audioCtx.createGain();
+  source.connect(gainNode);
+  gainNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+}
+
+playBtn.addEventListener('click', async () => {
+  if (!audioEl) return;
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  if (!gainNode) ensureSource();
+  audioEl.play();
+  isPlaying = true;
+  startTime = performance.now();
+  statusEl.textContent = 'Playing...';
+  render();
+});
+
+pauseBtn.addEventListener('click', () => {
+  if (!audioEl) return;
+  audioEl.pause();
+  isPlaying = false;
+  statusEl.textContent = 'Paused';
+  cancelAnimationFrame(animationId);
+});
+
+resetBtn.addEventListener('click', () => {
+  panOffset = 0;
+});
+
+/* === Recording === */
+recordBtn.addEventListener('click', async () => {
+  if (isRecording) {
+    stopRecording();
+    return;
+  }
+  if (!audioEl) return;
+  startRecording();
+});
+
+function startRecording() {
+  const stream = canvas.captureStream(60);
+  const audioDest = audioCtx.createMediaStreamDestination();
+  if (source) {
+    const recGain = audioCtx.createGain();
+    recGain.gain.value = 1;
+    source.connect(recGain);
+    recGain.connect(audioDest);
+  }
+  const audioTrack = audioDest.stream.getAudioTracks()[0];
+  if (audioTrack) stream.addTrack(audioTrack);
+
+  const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+    ? 'video/webm;codecs=vp9,opus'
+    : 'video/webm';
+  mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+  recordedChunks = [];
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'beat-pulse-visualizer.webm';
+    a.click();
+    URL.revokeObjectURL(url);
+    statusEl.textContent = 'Video saved: beat-pulse-visualizer.webm';
+    statusEl.classList.remove('recording');
+    recordBtn.textContent = 'Record Video';
+    recordBtn.classList.remove('btn-secondary');
+    recordBtn.classList.add('btn-danger');
+  };
+  mediaRecorder.start(100);
+  isRecording = true;
+  recordBtn.textContent = 'Stop Recording';
+  recordBtn.classList.remove('btn-danger');
+  recordBtn.classList.add('btn-secondary');
+  statusEl.textContent = 'Recording...';
+  statusEl.classList.add('recording');
+  if (!isPlaying) {
+    audioEl.play();
+    isPlaying = true;
+    render();
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  isRecording = false;
+}
+
+/* === Analysis helpers === */
+function getBandEnergy(arr, lowHz, highHz, sampleRate) {
+  const nyquist = sampleRate / 2;
+  const lowIndex = Math.floor((lowHz / nyquist) * arr.length);
+  const highIndex = Math.ceil((highHz / nyquist) * arr.length);
+  let sum = 0;
+  let count = 0;
+  for (let i = Math.max(0, lowIndex); i < Math.min(arr.length, highIndex); i++) {
+    sum += arr[i];
+    count++;
+  }
+  return count ? sum / count : 0;
+}
+
+/* Kick detection state */
+let smoothedBass = 0, smoothedMid = 0, smoothedHigh = 0;
+let prevKickEnergy = 0;
+let kickPulse = 0;
+let kickHold = 0;
+let kickCount = 0;
+
+/* === Color helpers: blue/black/green theme === */
+function getRingColor(index, total, band, alphaBoost) {
+  const t = total > 1 ? index / (total - 1) : 0;
+  const hue = 140 + t * 80; // 140 (green) -> 220 (blue)
+  const sat = 75 + (1 - t) * 25;
+  const light = 45 + band * 25;
+  const alpha = (0.55 + band * 0.4 + (alphaBoost || 0));
+  return `hsla(${hue}, ${sat}%, ${light}%, ${Math.min(1, alpha)})`;
+}
+
+function getRingGlowColor(index, total, band) {
+  const t = total > 1 ? index / (total - 1) : 0;
+  const hue = 140 + t * 80;
+  const alpha = (band - 0.5) * 0.5;
+  return `hsla(${hue}, 100%, 80%, ${Math.max(0, alpha)})`;
+}
+
+/* === Auto-scale background to cover canvas === */
+function getCoverDrawParams(img, cw, ch, panPx, tiltRad) {
+  const scale = Math.max(cw / img.width, ch / img.height);
+  const imgW = img.width * scale;
+  const imgH = img.height * scale;
+  const baseX = (cw - imgW) / 2;
+  const baseY = (ch - imgH) / 2;
+  const x = baseX - panPx;
+  const y = baseY;
+  return { x, y, w: imgW, h: imgH, scale };
+}
+
+/* === Rendering === */
+function render() {
+  if (!isPlaying) return;
+  animationId = requestAnimationFrame(render);
+
+  const W = canvas.parentElement.clientWidth;
+  const H = canvas.parentElement.clientHeight;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  analyser.getByteFrequencyData(freqArray);
+  analyser.getByteTimeDomainData(dataArray);
+
+  const sampleRate = audioCtx.sampleRate;
+
+  /* --- Frequency bands --- */
+  const kickEnergy = getBandEnergy(freqArray, 30, 100, sampleRate);
+  const bassEnergy = getBandEnergy(freqArray, 20, 140, sampleRate);
+  const midEnergy  = getBandEnergy(freqArray, 140, 2000, sampleRate);
+  const highEnergy = getBandEnergy(freqArray, 2000, 8000, sampleRate);
+
+  /* --- Kick transient detection --- */
+  const kickDiff = kickEnergy - prevKickEnergy;
+  const kickThreshold = 4;
+  kickHold = Math.max(0, kickHold - 1);
+
+  if (kickDiff > kickThreshold && kickHold === 0 && kickEnergy > 10) {
+    kickPulse = 1.0;
+    kickHold = 5;
+    kickCount++;
+  }
+  kickPulse *= 0.80;
+  prevKickEnergy = kickEnergy;
+
+  const targetBass = bassEnergy * (settings.bassSens / 255);
+  const targetMid  = midEnergy  * (settings.midSens / 255);
+  const targetHigh = highEnergy * (settings.highSens / 255);
+
+  smoothedBass += (targetBass - smoothedBass) * 0.35;
+  smoothedMid  += (targetMid  - smoothedMid)  * 0.35;
+  smoothedHigh += (targetHigh - smoothedHigh) * 0.35;
+
+  panOffset += settings.panSpeed * 0.4;
+
+  ctx.clearRect(0, 0, W, H);
+
+  /* --- Background --- */
+  if (bgImg) {
+    const tiltRad = (settings.tilt * Math.PI) / 180 * Math.sin(panOffset * 0.008);
+    const coverScale = Math.max(W / bgImg.width, H / bgImg.height);
+    const coverW = bgImg.width * coverScale;
+    const coverH = bgImg.height * coverScale;
+    const maxPan = Math.max(0, coverW - W);
+    const panPx = (Math.sin(panOffset * 0.005) * 0.5 + 0.5) * maxPan;
+    const params = getCoverDrawParams(bgImg, W, H, panPx, tiltRad);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tiltRad);
+    ctx.translate(-cx, -cy);
+    ctx.drawImage(bgImg, params.x, params.y, params.w, params.h);
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(4, 10, 18, 0.50)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    const grad = ctx.createRadialGradient(cx, cy, H * 0.15, cx, cy, H * 0.9);
+    grad.addColorStop(0, '#0a1828');
+    grad.addColorStop(1, '#020508');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* === LOGO PULSE === */
+  const logoBaseR = settings.logoSize / 2;
+  const logoKickPulse = kickPulse * 0.50;
+  const logoBassPulse = smoothedBass * 0.32;
+  const logoPulse = 1 + logoBassPulse + logoKickPulse;
+  const logoR = logoBaseR * logoPulse;
+
+  /* === Concentric circles === */
+  const baseRadius = logoBaseR * 0.72;
+  const waveCount = settings.waveCount;
+  const maxAllowedRadius = Math.min(W, H) * 0.46;
+
+  const rings = [];
+  for (let i = 0; i < waveCount; i++) {
+    let band = 0;
+    if (i % 3 === 0) band = smoothedBass;
+    else if (i % 3 === 1) band = smoothedMid;
+    else band = smoothedHigh;
+
+    const kickBoost = (waveCount - i) / waveCount;
+    const kickRingBoost = kickPulse * (0.85 * kickBoost + 0.20);
+    const bassRingBoost = smoothedBass * 0.50;
+
+    const rawRadius = baseRadius + (i + 1) * 22 + (band * 240 + kickRingBoost * 200 + bassRingBoost * 100) * settings.intensity;
+    rings.push({ rawRadius, band, index: i });
+  }
+
+  const outermostRaw = rings[rings.length - 1].rawRadius;
+  const fitScale = outermostRaw > maxAllowedRadius ? maxAllowedRadius / outermostRaw : 1;
+
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const ring = rings[i];
+    const radius = ring.rawRadius * fitScale;
+    const band = ring.band;
+    const idx = ring.index;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(0, radius), 0, Math.PI * 2);
+    ctx.strokeStyle = getRingColor(idx, waveCount, band, 0);
+    ctx.lineWidth = 2 + band * 2.5 * settings.intensity;
+    ctx.stroke();
+
+    if (band > 0.5) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(0, radius), 0, Math.PI * 2);
+      ctx.strokeStyle = getRingGlowColor(idx, waveCount, band);
+      ctx.lineWidth = (2 + band * 2.5 * settings.intensity) * 1.8;
+      ctx.stroke();
+    }
+  }
+
+  /* === Logo glow === */
+  const rimGrad = ctx.createRadialGradient(cx, cy, logoR * 0.78, cx, cy, logoR * 1.26);
+  rimGrad.addColorStop(0, 'hsla(180, 90%, 60%, 0)');
+  rimGrad.addColorStop(0.5, `hsla(160, 100%, 70%, ${0.25 + smoothedBass * 0.35 + kickPulse * 0.60})`);
+  rimGrad.addColorStop(1, 'hsla(180, 90%, 60%, 0)');
+  ctx.fillStyle = rimGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, logoR * 1.26, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* === Logo circle fill & image === */
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, logoR, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = '#060d14';
+  ctx.fill();
+
+  if (logoImg) {
+    const s = Math.min(logoImg.width, logoImg.height);
+    const sx = (logoImg.width - s) / 2;
+    const sy = (logoImg.height - s) / 2;
+    ctx.drawImage(logoImg, sx, sy, s, s, cx - logoR, cy - logoR, logoR * 2, logoR * 2);
+  } else {
+    ctx.fillStyle = '#0a1a2e';
+    ctx.fillRect(cx - logoR, cy - logoR, logoR * 2, logoR * 2);
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${logoR * 0.5}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LOGO', cx, cy);
+  }
+  ctx.restore();
+
+  /* ============================================================ */
+  /* === WAVEFORM RING: the wavy line around the logo edge ====== */
+  /* ============================================================ */
+  const waveformRadius = logoR;
+  const points = 180; // smoother waves
+
+  // Build the wave using BOTH time-domain and frequency data
+  // so it reacts to the actual audio waveform AND the bass/kick energy
+  const wavePath = new Path2D();
+  for (let i = 0; i <= points; i++) {
+    const angle = (i / points) * Math.PI * 2;
+
+    // Time-domain sample for the "wiggle" shape
+    const dataIndex = Math.floor((i / points) * (dataArray.length / 2));
+    const timeAmp = (dataArray[dataIndex] - 128) / 128; // -1 to 1
+
+    // Frequency-domain sample for bass-driven bulges
+    const freqIndex = Math.floor((i / points) * (freqArray.length / 4));
+    const freqVal = freqArray[freqIndex] / 255; // 0 to 1
+
+    // Combine them: time domain gives the fine wiggle,
+    // freq domain gives the big bass-driven bulges
+    const combinedAmp = timeAmp * 0.4 + freqVal * 0.6;
+
+    // MASSIVE amplitude multipliers for visibility
+    const baseWave = combinedAmp * 70 * settings.intensity;
+    const bassWave = smoothedBass * 45 * settings.intensity;
+    const kickWave = kickPulse * 55;
+
+    const r = waveformRadius + baseWave + bassWave + kickWave;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+
+    if (i === 0) wavePath.moveTo(x, y);
+    else wavePath.lineTo(x, y);
+  }
+  wavePath.closePath();
+
+  // Outer glow behind the waveform
+  ctx.save();
+  ctx.shadowColor = `hsla(${170 + smoothedBass * 40 + kickPulse * 50}, 100%, 70%, 0.9)`;
+  ctx.shadowBlur = 18 + smoothedBass * 25 + kickPulse * 35;
+  ctx.strokeStyle = `hsla(${170 + smoothedBass * 40 + kickPulse * 50}, 100%, 75%, 0.4)`;
+  ctx.lineWidth = 10 + smoothedBass * 8 + kickPulse * 12;
+  ctx.stroke(wavePath);
+  ctx.restore();
+
+  // Main bright waveform stroke
+  ctx.save();
+  ctx.strokeStyle = `hsla(${175 + smoothedBass * 35 + kickPulse * 45}, 95%, 80%, 0.95)`;
+  ctx.lineWidth = 3.5 + smoothedBass * 3 + kickPulse * 5;
+  ctx.stroke(wavePath);
+  ctx.restore();
+
+  /* === Logo rim === */
+  ctx.beginPath();
+  ctx.arc(cx, cy, logoR, 0, Math.PI * 2);
+  ctx.strokeStyle = `hsla(${160 + smoothedBass * 50 + kickPulse * 60}, 90%, 80%, ${0.65 + smoothedBass * 0.35 + kickPulse * 0.60})`;
+  ctx.lineWidth = 3.5 + smoothedBass * 4 + kickPulse * 6;
+  ctx.stroke();
+}
+</script>
+</body>
+</html>
